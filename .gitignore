@@ -33,3 +33,4 @@ logs/
 
 # User specific scan history (if stored as files)
 **/scan_data.json
+backend/thumbnails/

@@ -19,9 +19,20 @@ const MediaCard = ({ media, onClick }) => {
         >
             <div className="relative aspect-video rounded-xl bg-gradient-to-br from-primary-600/20 to-primary-800/20 mb-3 overflow-hidden flex items-center justify-center">
                 <div className="absolute inset-0 bg-black/30 group-hover:bg-black/20 transition-all duration-300" />
-                <Icon className="w-16 h-16 text-primary-400 relative z-10" />
+                {media.thumbnail ? (
+                    <img
+                        src={media.thumbnail}
+                        alt={media.name}
+                        className="w-full h-full object-cover relative z-10"
+                        onError={(e) => {
+                            e.target.style.display = 'none';
+                        }}
+                    />
+                ) : (
+                    <Icon className="w-16 h-16 text-primary-400 relative z-10" />
+                )}
                 <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20">
-                    <div className="w-14 h-14 rounded-full bg-primary-500 flex items-center justify-center">
+                    <div className="w-14 h-14 rounded-full bg-primary-500 flex items-center justify-center backdrop-blur-sm">
                         <Play className="w-7 h-7 text-white ml-1" fill="white" />
                     </div>
                 </div>

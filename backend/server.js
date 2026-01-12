@@ -5,15 +5,29 @@ import path from 'path';
 import fs from 'fs';
 import mime from 'mime-types';
 import { fileURLToPath } from 'url';
+import ffmpeg from 'fluent-ffmpeg';
+import ffmpegInstaller from 'ffmpeg-static';
+import ffprobeInstaller from 'ffprobe-static';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Setup FFmpeg
+ffmpeg.setFfmpegPath(ffmpegInstaller);
+ffmpeg.setFfprobePath(ffprobeInstaller.path);
+
 const app = express();
 const PORT = 5000;
 
+// Create thumbnails directory if it doesn't exist
+const THUMBNAILS_DIR = path.join(__dirname, 'thumbnails');
+if (!fs.existsSync(THUMBNAILS_DIR)) {
+    fs.mkdirSync(THUMBNAILS_DIR, { recursive: true });
+}
+
 app.use(cors());
 app.use(express.json());
+app.use('/thumbnails', express.static(THUMBNAILS_DIR));
 
 // Store scanned media files
 let mediaFiles = [];
@@ -86,8 +100,9 @@ app.post('/api/scan', async (req, res) => {
                         // Ensure directory is formatted consistently
                         let directory = path.dirname(file).replace(/\\/g, '/');
 
+                        const id = Buffer.from(file).toString('base64');
                         mediaFiles.push({
-                            id: Buffer.from(file).toString('base64'),
+                            id,
                             path: file,
                             name: path.basename(file),
                             directory,
@@ -95,7 +110,8 @@ app.post('/api/scan', async (req, res) => {
                             type,
                             size: stats.size,
                             modified: stats.mtime,
-                            extension: ext
+                            extension: ext,
+                            thumbnail: type === 'video' ? `http://localhost:5000/api/thumbnail/${id}` : null
                         });
                     } catch (e) {
                         // Ignore files we can't stat (permission issues)
@@ -245,6 +261,43 @@ app.get('/api/media', (req, res) => {
     if (folder) filtered = filtered.filter(f => f.directory === folder);
     if (type && ['video', 'audio'].includes(type)) filtered = filtered.filter(f => f.type === type);
     res.json({ count: filtered.length, files: filtered });
+});
+
+// GET /api/thumbnail/:id - Generate or serve a video thumbnail
+app.get('/api/thumbnail/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const filePath = Buffer.from(id, 'base64').toString('utf-8');
+        const thumbnailPath = path.join(THUMBNAILS_DIR, `${id}.jpg`);
+
+        // If thumbnail already exists, serve it
+        if (fs.existsSync(thumbnailPath)) {
+            return res.sendFile(thumbnailPath);
+        }
+
+        // If not a video, or file doesn't exist, return 404
+        if (!fs.existsSync(filePath) || !VIDEO_EXTENSIONS.includes(path.extname(filePath).toLowerCase().substring(1))) {
+            return res.status(404).json({ error: 'Thumbnail not available' });
+        }
+
+        // Generate thumbnail
+        ffmpeg(filePath)
+            .screenshots({
+                timestamps: ['10%'], // Take screenshot at 10% mark
+                filename: `${id}.jpg`,
+                folder: THUMBNAILS_DIR,
+                size: '320x180'
+            })
+            .on('end', () => {
+                res.sendFile(thumbnailPath);
+            })
+            .on('error', (err) => {
+                console.error('FFmpeg error:', err);
+                res.status(500).json({ error: 'Failed to generate thumbnail' });
+            });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // GET /api/stream/:id - Stream a media file
